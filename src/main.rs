@@ -1,5 +1,4 @@
 use std::env;
-use std::io::Read;
 use std::path::Path;
 use std::process::exit;
 use std::time::Duration;
@@ -8,9 +7,11 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
-use sdl2::render::Texture;
+use sdl2::render::{BlendMode, Texture};
 
 mod high_score_table;
+mod tiles;
+mod palette;
 
 
 fn main() {
@@ -51,6 +52,17 @@ fn high_scores(level: &str) {
 
 
 fn start(level: &str) {
+    let palette_path = Path::new(".").join("MINING").join(level).join(format!("{}.PAL", level.to_uppercase()));
+    if !palette_path.exists() {
+        eprintln!("palette file of {} does not exist", level);
+        exit(1);
+    }
+    let tiles_path = Path::new(".").join("MINING").join(level).join("TILE.DAT");
+    if !tiles_path.exists() {
+        eprintln!("tile file of {} does not exist", level);
+        exit(1);
+    }
+
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -66,22 +78,20 @@ fn start(level: &str) {
     canvas.clear();
     canvas.present();
 
-    let pixels = &mut [0; 32 * 32 * 4];
-    for (i, v) in pixels.chunks_exact_mut(3).enumerate() {
-        let x = i % 32;
-        let y = i / 32;
-        if x == y || x + y == 31 {
-            v[0] = 255;
-        } else if x == 0 || y == 0 || x == 31 || y == 31 {
-            v[1] = 255;
-        }
-    }
+    let palette = palette::load_palette(&palette_path);
 
+    let tiles = tiles::load_tiles(&tiles_path);
+    let pixels: Vec<u8> = tiles[180].iter().map(|&v| palette[v as usize].clone()).flatten().collect();
+    let pixels = &pixels[..];
+
+    let width = 40;
+    let height = 40;
     let texture_creator = canvas.texture_creator();
     let mut texture: Texture = texture_creator
-        .create_texture_target(PixelFormatEnum::RGB24, 32, 32)
+        .create_texture_target(PixelFormatEnum::RGBA32, width, height)
         .unwrap();
-    texture.update(Rect::new(0, 0, 32, 32), pixels, 32 * 3).unwrap();
+    texture.set_blend_mode(BlendMode::Blend);
+    texture.update(Rect::new(0, 0, width, height), pixels, width as usize * 4).unwrap();
 
     let mut running = true;
     while running {
@@ -93,9 +103,10 @@ fn start(level: &str) {
             }
         }
 
-        for y in (0..32 * 8).step_by(32) {
-            for x in (0..32 * 16).step_by(32) {
-                canvas.copy(&texture, None, Rect::new(x, y, 32, 32)).unwrap();
+        canvas.clear();
+        for y in (0..height * 8).step_by(height as usize) {
+            for x in (0..width * 16).step_by(width as usize) {
+                canvas.copy(&texture, None, Rect::new(x as i32, y as i32, width, height)).unwrap();
             }
         }
         canvas.present();
