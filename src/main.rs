@@ -12,21 +12,22 @@ use sdl2::render::{BlendMode, Texture};
 mod high_score_table;
 mod tiles;
 mod palette;
+mod level;
 
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() >= 2 {
-        match args[1].as_ref() {
+        match &args[1][..] {
             "high-scores" => {
                 if args.len() == 3 {
-                    high_scores(args[2].as_ref());
+                    high_scores(&args[2]);
                     return;
                 }
             }
             "start" => {
-                if args.len() == 3 {
-                    start(args[2].as_ref());
+                if args.len() == 4 {
+                    start(&args[2], args[3].parse().unwrap());
                     return;
                 }
             }
@@ -38,10 +39,10 @@ fn main() {
 }
 
 
-fn high_scores(level: &str) {
-    let path = Path::new(".").join("MINING").join(level).join("high.dat");
+fn high_scores(episode: &str) {
+    let path = Path::new(".").join("MINING").join(episode).join("high.dat");
     if !path.exists() {
-        eprintln!("high scores file of {} does not exist", level);
+        eprintln!("high scores file of {} does not exist", episode);
         exit(1);
     }
     let high_scores = high_score_table::load(&path).unwrap();
@@ -51,15 +52,20 @@ fn high_scores(level: &str) {
 }
 
 
-fn start(level: &str) {
-    let palette_path = Path::new(".").join("MINING").join(level).join(format!("{}.PAL", level.to_uppercase()));
+fn start(episode: &str, level: u8) {
+    let palette_path = Path::new(".").join("MINING").join(episode).join(format!("{}.PAL", episode.to_uppercase()));
     if !palette_path.exists() {
-        eprintln!("palette file of {} does not exist", level);
+        eprintln!("palette file of {} does not exist", episode);
         exit(1);
     }
-    let tiles_path = Path::new(".").join("MINING").join(level).join("TILE.DAT");
+    let tiles_path = Path::new(".").join("MINING").join(episode).join("TILE.DAT");
     if !tiles_path.exists() {
-        eprintln!("tile file of {} does not exist", level);
+        eprintln!("tile file of {} does not exist", episode);
+        exit(1);
+    }
+    let level_path = Path::new(".").join("MINING").join(episode).join(format!("LEVEL{:03}.BTN", level));
+    if !level_path.exists() {
+        eprintln!("level {:03} file of {} does not exist", level, episode);
         exit(1);
     }
 
@@ -67,7 +73,7 @@ fn start(level: &str) {
     let video_subsystem = sdl_context.video().unwrap();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    let window = video_subsystem.window("", 600, 400)
+    let window = video_subsystem.window("", 1200, 800)
         .position_centered()
         .build()
         .unwrap();
@@ -79,19 +85,23 @@ fn start(level: &str) {
     canvas.present();
 
     let palette = palette::load_palette(&palette_path);
-
     let tiles = tiles::load_tiles(&tiles_path);
-    let pixels: Vec<u8> = tiles[180].iter().map(|&v| palette[v as usize].clone()).flatten().collect();
-    let pixels = &pixels[..];
+    let level = level::load_level(&level_path);
 
     let width = 40;
     let height = 40;
     let texture_creator = canvas.texture_creator();
-    let mut texture: Texture = texture_creator
-        .create_texture_target(PixelFormatEnum::RGBA32, width, height)
-        .unwrap();
-    texture.set_blend_mode(BlendMode::Blend);
-    texture.update(Rect::new(0, 0, width, height), pixels, width as usize * 4).unwrap();
+    let mut tile_textures = vec![];
+    for tile in tiles {
+        let pixels: Vec<u8> = tile.iter().map(|&v| palette[v as usize].clone()).flatten().collect();
+        let pixels = &pixels[..];
+        let mut texture: Texture = texture_creator
+            .create_texture_target(PixelFormatEnum::RGBA32, width, height)
+            .unwrap();
+        texture.set_blend_mode(BlendMode::Blend);
+        texture.update(Rect::new(0, 0, width, height), pixels, width as usize * 4).unwrap();
+        tile_textures.push(texture);
+    }
 
     let mut running = true;
     while running {
@@ -104,9 +114,9 @@ fn start(level: &str) {
         }
 
         canvas.clear();
-        for y in (0..height * 8).step_by(height as usize) {
-            for x in (0..width * 16).step_by(width as usize) {
-                canvas.copy(&texture, None, Rect::new(x as i32, y as i32, width, height)).unwrap();
+        for y in 0..100 {
+            for x in 0..100 {
+                canvas.copy(&tile_textures[level[(100 * y + x) as usize] as usize], None, Rect::new(x * width as i32, y * height as i32, width, height)).unwrap();
             }
         }
         canvas.present();
