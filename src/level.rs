@@ -3,15 +3,82 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-pub fn load_level(path: &Path) -> Vec<u8> {
+/// A level contains a map, i.e., a collection of row-by-row tile indices.  The
+/// width and height are the number of tiles per row respectively column of the
+/// map; therefore, the map should have width*height entries.
+pub struct Level {
+    pub width: u16,
+    pub height: u16,
+    pub map: Vec<u8>,
+}
+
+
+/// A level file is composed of a header (width and height) and the map data
+/// (width*height) entries.
+pub fn load_level(path: &Path) -> Result<Level, String> {
     let mut file = File::open(path).unwrap();
     let mut buffer = vec!();
     file.read_to_end(&mut buffer).unwrap();
-    let buffer = &buffer[..];
-    let width = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
-    let height = u16::from_le_bytes(buffer[2..4].try_into().unwrap()) as usize;
-    if 4 + width * height != buffer.len() {
-        panic!(format!("expected exactly {} bytes, found {}", 4 + width * height, buffer.len()));
+    if buffer.len() < 4 {
+        return Err(format!("missing header (width and height) in level file {}", path.display()));
     }
-    buffer[4..].into()
+    let width = u16::from_le_bytes(buffer[..2].try_into().unwrap());
+    let height = u16::from_le_bytes(buffer[2..4].try_into().unwrap());
+    if 4 + width as usize * height as usize == buffer.len() {
+        Ok(Level { width, height, map: buffer[4..].into() })
+    } else {
+        Err(format!(
+            "according to header, level file {} should contain 4+{}*{}={} bytes, found {} bytes",
+            path.display(), width, height, 4 + width * height, buffer.len(),
+        ))
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use std::io::Write;
+
+    use tempfile::{NamedTempFile, TempPath};
+
+    use super::*;
+
+    fn create_temp_file(data: &[u8]) -> TempPath {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(data).unwrap();
+        file.into_temp_path()
+    }
+
+    #[test]
+    fn test_load() {
+        // missing header, requires at least 4 bytes
+        let path = create_temp_file(&[9]);
+        assert_eq!(load_level(&path).err(), Some(format!(
+            "missing header (width and height) in level file {}", path.display(),
+        )));
+
+        // map data too short
+        let path = create_temp_file(&[9, 0, 2, 0, 99, 99]);
+        assert_eq!(load_level(&path).err(), Some(format!(
+            "according to header, level file {} should contain 4+9*2=22 bytes, found 6 bytes",
+            path.display(),
+        )));
+
+        // map data too long
+        let path = create_temp_file(&[1, 0, 1, 0, 99, 99]);
+        assert_eq!(load_level(&path).err(), Some(format!(
+            "according to header, level file {} should contain 4+1*1=5 bytes, found 6 bytes",
+            path.display(),
+        )));
+
+        // success
+        let path = create_temp_file(&[
+            4, 0, 3, 0,
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+        ]);
+        let level = load_level(&path).unwrap();
+        assert_eq!(level.width, 4);
+        assert_eq!(level.height, 3);
+        assert_eq!(level.map, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    }
 }

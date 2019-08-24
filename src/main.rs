@@ -52,7 +52,7 @@ fn high_scores(episode: &str) {
 }
 
 
-fn start(episode: &str, level: u8) {
+fn start(episode: &str, level_number: u8) {
     let palette_path = Path::new(".").join("MINING").join(episode).join(format!("{}.PAL", episode.to_uppercase()));
     if !palette_path.exists() {
         eprintln!("palette file of {} does not exist", episode);
@@ -63,9 +63,9 @@ fn start(episode: &str, level: u8) {
         eprintln!("tile file of {} does not exist", episode);
         exit(1);
     }
-    let level_path = Path::new(".").join("MINING").join(episode).join(format!("LEVEL{:03}.BTN", level));
-    if !level_path.exists() {
-        eprintln!("level {:03} file of {} does not exist", level, episode);
+    let level_path = Path::new(".").join("MINING").join(episode).join(format!("LEVEL{:03}.BTN", level_number));
+    if level_number != 0 && !level_path.exists() {
+        eprintln!("level {:03} file of {} does not exist", level_number, episode);
         exit(1);
     }
 
@@ -86,7 +86,11 @@ fn start(episode: &str, level: u8) {
 
     let palette = palette::load_palette(&palette_path);
     let tiles = tiles::load_tiles(&tiles_path);
-    let level = level::load_level(&level_path);
+    let level = if level_number != 0 {
+        level::load_level(&level_path).unwrap()
+    } else {
+        level::Level { width: 16, height: 16, map: (0..tiles.len() as u8).collect() }
+    };
 
     let width = 40;
     let height = 40;
@@ -114,9 +118,16 @@ fn start(episode: &str, level: u8) {
         }
 
         canvas.clear();
-        for y in 0..100 {
-            for x in 0..100 {
-                canvas.copy(&tile_textures[level[(100 * y + x) as usize] as usize], None, Rect::new(x * width as i32, y * height as i32, width, height)).unwrap();
+        for y in 0..level.height {
+            for x in 0..level.width {
+                let pos = (y * level.width + x) as usize;
+                if pos < level.map.len() {
+                    canvas.copy(
+                        &tile_textures[level.map[pos] as usize],
+                        None,
+                        Rect::new(x as i32 * width as i32, y as i32 * height as i32, width, height),
+                    ).unwrap();
+                }
             }
         }
         canvas.present();
