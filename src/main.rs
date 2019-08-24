@@ -84,27 +84,25 @@ fn start(episode: &str, level_number: u8) {
     canvas.clear();
     canvas.present();
 
-    let palette = palette::load_palette(&palette_path);
-    let tiles = tiles::load_tiles(&tiles_path);
+    let palette = palette::load_palette(&palette_path).unwrap();
+    let tiles = tiles::load_tiles(&tiles_path).unwrap();
     let level = if level_number != 0 {
         level::load_level(&level_path).unwrap()
     } else {
         level::Level { width: 16, height: 16, map: (0..tiles.len() as u8).collect() }
     };
 
-    let width = 40;
-    let height = 40;
     let texture_creator = canvas.texture_creator();
     let mut tile_textures = vec![];
     for tile in tiles {
-        let pixels: Vec<u8> = tile.iter().map(|&v| palette[v as usize].clone()).flatten().collect();
+        let pixels: Vec<u8> = tile.data.iter().map(|&v| palette[v as usize].clone()).flatten().collect();
         let pixels = &pixels[..];
         let mut texture: Texture = texture_creator
-            .create_texture_target(PixelFormatEnum::RGBA32, width, height)
+            .create_texture_target(PixelFormatEnum::RGBA32, tile.width as u32, tile.height as u32)
             .unwrap();
         texture.set_blend_mode(BlendMode::Blend);
-        texture.update(Rect::new(0, 0, width, height), pixels, width as usize * 4).unwrap();
-        tile_textures.push(texture);
+        texture.update(None, pixels, tile.width as usize * 4).unwrap();
+        tile_textures.push((tile.width, tile.height, texture));
     }
 
     let mut running = true;
@@ -122,10 +120,11 @@ fn start(episode: &str, level_number: u8) {
             for x in 0..level.width {
                 let pos = (y * level.width + x) as usize;
                 if pos < level.map.len() {
+                    let (width, height, tile_texture) = &tile_textures[level.map[pos] as usize];
                     canvas.copy(
-                        &tile_textures[level.map[pos] as usize],
+                        tile_texture,
                         None,
-                        Rect::new(x as i32 * width as i32, y as i32 * height as i32, width, height),
+                        Rect::new(x as i32 * *width as i32, y as i32 * *height as i32, *width as u32, *height as u32),
                     ).unwrap();
                 }
             }

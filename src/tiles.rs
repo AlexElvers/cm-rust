@@ -3,23 +3,34 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-pub fn load_tiles(path: &Path) -> Vec<Vec<u8>> {
+pub struct Tile {
+    pub width: u16,
+    pub height: u16,
+    pub data: Vec<u8>,
+}
+
+
+pub fn load_tiles(path: &Path) -> Result<Vec<Tile>, String> {
     let mut file = File::open(path).unwrap();
     let mut buffer = vec!();
     file.read_to_end(&mut buffer).unwrap();
     let buffer = &buffer[..];
     let mut tiles = vec!();
-    let mut i = 0usize;
+    let mut i = 0;
     while i < buffer.len() {
-        let width = u16::from_le_bytes(buffer[i..i + 2].try_into().unwrap()) as usize;
-        let height = u16::from_le_bytes(buffer[i + 2..i + 4].try_into().unwrap()) as usize;
-        if i + 4 + width * height > buffer.len() {
-            panic!("cannot read over array bounds");
+        let width = u16::from_le_bytes(buffer[i..i + 2].try_into().unwrap());
+        let height = u16::from_le_bytes(buffer[i + 2..i + 4].try_into().unwrap());
+        if i + 4 + width as usize * height as usize > buffer.len() {
+            return Err("cannot read over array bounds".into());
         }
-        tiles.push(buffer[i + 4..i + 4 + width * height].into());
-        i += 4 + width * height;
+        tiles.push(Tile {
+            width,
+            height,
+            data: buffer[i + 4..i + 4 + width as usize * height as usize].into(),
+        });
+        i += 4 + width as usize * height as usize;
     }
-    tiles
+    Ok(tiles)
 }
 
 #[cfg(test)]
@@ -57,11 +68,19 @@ mod test {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(&buffer).unwrap();
         let path = file.into_temp_path();
-        let tiles = load_tiles(&path);
+        let tiles = load_tiles(&path).unwrap();
         assert_eq!(tiles.len(), 4);
-        assert_eq!(tiles[0].len(), 20 * 20);
-        assert_eq!(tiles[1].len(), 10 * 15);
-        assert_eq!(tiles[2].len(), 2 * 2);
-        assert_eq!(tiles[3].len(), 20 * 20);
+        assert_eq!(tiles[0].width, 20);
+        assert_eq!(tiles[0].height, 20);
+        assert_eq!(tiles[0].data.len(), 20 * 20);
+        assert_eq!(tiles[1].width, 10);
+        assert_eq!(tiles[1].height, 15);
+        assert_eq!(tiles[1].data.len(), 10 * 15);
+        assert_eq!(tiles[2].width, 2);
+        assert_eq!(tiles[2].height, 2);
+        assert_eq!(tiles[2].data.len(), 2 * 2);
+        assert_eq!(tiles[3].width, 20);
+        assert_eq!(tiles[3].height, 20);
+        assert_eq!(tiles[3].data.len(), 20 * 20);
     }
 }
